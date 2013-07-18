@@ -42,7 +42,7 @@ func loggregatorAddress() string {
 
 func TestNewAgent(t *testing.T) {
 	actualAgent := NewAgent("path", logger())
-	expectedAgent := &agent{"path", logger()}
+	expectedAgent := &agent{"path", logger(), *(new(time.Time))}
 	assert.Equal(t, expectedAgent, actualAgent)
 }
 
@@ -97,7 +97,7 @@ func TestTheAgentMonitorsChangesInInstances(t *testing.T) {
 
 func TestThatFunctionContinuesToPollWhenFileCantBeOpened(t *testing.T) {
 	os.Remove(filePath())
-	agent := &agent{filePath(), logger()}
+	agent := &agent{filePath(), logger(), *(new(time.Time))}
 
 	instancesChan := agent.watchInstancesJsonFileForChanges()
 
@@ -121,7 +121,7 @@ func TestThatFunctionContinuesToPollWhenFileCantBeOpened(t *testing.T) {
 
 func TestThatAnExistinginstanceWillBeSeen(t *testing.T) {
 	writeToFile(t, filePath(), `{"instances": [{"state": "RUNNING", "application_id": "123"}]}`, true)
-	agent := &agent{filePath(), logger()}
+	agent := &agent{filePath(), logger(), *(new(time.Time))}
 
 	instancesChan := agent.watchInstancesJsonFileForChanges()
 
@@ -133,7 +133,7 @@ func TestThatAnExistinginstanceWillBeSeen(t *testing.T) {
 func TestThatANewinstanceWillBeSeen(t *testing.T) {
 	file := createFile(t, filePath())
 	defer file.Close()
-	agent := &agent{filePath(), logger()}
+	agent := &agent{filePath(), logger(), *(new(time.Time))}
 
 	instancesChan := agent.watchInstancesJsonFileForChanges()
 
@@ -150,7 +150,7 @@ func TestThatANewinstanceWillBeSeen(t *testing.T) {
 
 func TestThatOnlyOneNewInstancesWillBeSeen(t *testing.T) {
 	writeToFile(t, filePath(), `{"instances": [{"state": "RUNNING", "application_id": "123"}]}`, true)
-	agent := &agent{filePath(), logger()}
+	agent := &agent{filePath(), logger(), *(new(time.Time))}
 
 	instancesChan := agent.watchInstancesJsonFileForChanges()
 
@@ -170,7 +170,7 @@ func TestThatOnlyOneNewInstancesWillBeSeen(t *testing.T) {
 
 func TestThatARemovedInstanceWillBeRemoved(t *testing.T) {
 	writeToFile(t, filePath(), `{"instances": [{"state": "RUNNING", "application_id": "123"}]}`, true)
-	agent := &agent{filePath(), logger()}
+	agent := &agent{filePath(), logger(), *(new(time.Time))}
 
 	instancesChan := agent.watchInstancesJsonFileForChanges()
 
@@ -178,9 +178,10 @@ func TestThatARemovedInstanceWillBeRemoved(t *testing.T) {
 	assert.True(t, ok, "Channel is closed")
 	assert.NotNil(t, inst)
 
+	time.Sleep(1 * time.Second) // ensure that the go function starts before we add proper data to the json config
 	writeToFile(t, filePath(), `{"instances": []}`, true)
 
-	time.Sleep(2 * time.Millisecond) // ensure that the go function starts before we add proper data to the json config
+	time.Sleep(1 * time.Second) // ensure that the go function starts before we add proper data to the json config
 
 	writeToFile(t, filePath(), `{"instances": [{"state": "RUNNING", "application_id": "123"}]}`, true)
 

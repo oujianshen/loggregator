@@ -4,6 +4,7 @@ import (
 	"deaagent/loggregatorclient"
 	"github.com/cloudfoundry/gosteno"
 	"io/ioutil"
+	"os"
 	"runtime"
 	"time"
 )
@@ -11,12 +12,13 @@ import (
 type agent struct {
 	InstancesJsonFilePath string
 	*gosteno.Logger
+	lastModTime time.Time
 }
 
 const bufferSize = 4096
 
 func NewAgent(instancesJsonFilePath string, logger *gosteno.Logger) *agent {
-	return &agent{instancesJsonFilePath, logger}
+	return &agent{instancesJsonFilePath, logger, *(new(time.Time))}
 }
 
 func (agent *agent) Start(loggregatorClient loggregatorclient.LoggregatorClient) {
@@ -28,6 +30,36 @@ func (agent *agent) Start(loggregatorClient loggregatorclient.LoggregatorClient)
 	}
 }
 
+func (agent *agent) readInstancesJsonFileIfChanged() ([]byte, bool) {
+	var curModTime time.Time
+
+	f, err := os.Open(agent.InstancesJsonFilePath)
+	defer f.Close()
+	if err != nil {
+		agent.Warnf("Opening failed. %s\n", err)
+		return nil, false
+	}
+
+	if fi, err := f.Stat(); err == nil {
+		curModTime = fi.ModTime()
+	} else {
+		agent.Warnf("File stat() failed. %s\n", err)
+		return nil, false
+	}
+
+	if agent.lastModTime.Before(curModTime) {
+		if bytes, err := ioutil.ReadAll(f); err != nil {
+			agent.Warnf("Reading failed. %s\n", err)
+			return nil, false
+		} else {
+			agent.lastModTime = curModTime
+			return bytes, true
+		}
+	}
+
+	return nil, false
+}
+
 func (agent *agent) watchInstancesJsonFileForChanges() chan *instance {
 	instancesChan := make(chan *instance)
 
@@ -37,9 +69,8 @@ func (agent *agent) watchInstancesJsonFileForChanges() chan *instance {
 		for {
 			runtime.Gosched()
 			time.Sleep(1 * time.Millisecond)
-			json, err := ioutil.ReadFile(agent.InstancesJsonFilePath)
-			if err != nil {
-				agent.Warnf("Reading failed, retrying. %s\n", err)
+			json, changed := agent.readInstancesJsonFileIfChanged()
+			if !changed {
 				continue
 			}
 
